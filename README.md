@@ -1,2 +1,2 @@
 # APDL
-Repository for APDL codes
+Repository for APDL (Ansys Parametric Design Language) codes
