@@ -1,0 +1,36 @@
+! Macro for creation of MPC connection of selected nodes to the master node
+! This is particulary usefull for application of boundary conditions (torque etc.)
+! Author: David Krzikalla
+
+/PREP7  							
+
+! -----------------------------------------------------------------------------------------------------------
+ET,3,184							! SET ELEMENT TYPE> MPC 184 ELEMENT							
+KEYOPT,3,1,1						! SET MPC 184 OPTIONS, BEAM BEHAVIOUR (ALLOWS ROTATIONAL DOF)
+! -----------------------------------------------------------------------------------------------------------
+
+
+
+									! MPC CONNECTION GENERATION
+
+*GET,NMAX,NODE,0,NUM,MAX			! GET MAX NODE NO. 
+NMASTER=NMAX+1						! MASTER NODE VARIABLE
+N,NMASTER,-5,0,0					! CREATE THE MASTER NODE
+! -----------------------------------------------------------------------------------------------------------
+LSEL,S,LOC,X,0						! SELECT LINES AT X=0 
+CLOCAL,11,1,-2,,,,,90				! CREATE LOCAL CYLINDRICAL SYSTEM AND ROTATE 90DEG ABOUT Y
+LSEL,R,LOC,X,8						! FROM SELECTION ABOVE RE-SELECT LINES AT RADIAL OF 8 MM
+CSYS,0								! SET GLOBAL CARTESIAN SYSTEM
+NSLL,S,1							! SELECT NODES ASSOCIATED TO THE SELECTED LINES
+*GET,NNODE,NODE,0,COUNT				! NUMBER OF SELECTED NODES
+*GET,MNODE,NODE,0,NUM,MIN			! GET MIN NODAL NO.
+! -----------------------------------------------------------------------------------------------------------
+CNODE=MNODE							! INITIATE CURRENT NODE NUMBER
+NSEL,A,,,NMASTER 					! ADD ALSO MASTER NODE INTO SELECTION 						
+TYPE,3			 					! SELECT MPC 184 EL. TYPE
+*DO,KK,1,NNODE						! DO LOOP TO CONNECT ELEMS WITH MASTER NODE BY MPC184
+E,NMASTER,CNODE						! CREATE MPC184 ELEMENT
+*GET,NXNODE,NODE,CNODE,NXTH			! GET NO OF NEXT NODE IN SELECTION
+CNODE=NXNODE						! UPDATE CURRENT NODE
+*ENDDO									
+ALLSEL,ALL									

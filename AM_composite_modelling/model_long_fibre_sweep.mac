@@ -1,0 +1,155 @@
+! THIS CODE CREATES A MESHED MODEL OF A LONG FIBRE REINFORCED COMPONENT 
+! THE BULK OF MATERIAL IS OF A POLYMER REINFORCED BY TRUSS LINKS OF A FIBRE MATERIAL
+! THIS MACRO IS SUITABLE TO MODEL BASICALLY ANY SWEPT COMPONENT REINFORCED BY LONG FIBRES FOLLOWING THE SWEEP PATH
+! CURRENTLY THE MACRO IS PREPARED TO MODEL A HALF MODEL OF A SPECIMEN TO BE SUBJECTED TO 3-POINT BENDING, SEE ATTACHED FIGURES IN THE GITHUB REPOSITORY
+! AUTHOR: DAVID KRZIKALLA
+! MACRO OUTLINE:
+! 0) Material models, geometrical and mesh parameters, element settings  
+! 1) Cross-sectional (CS) definition in XY plane
+! 2) Hard points (HPTs) creation to define possition of fibres*: reading fibre locations**, creating the HPTs, gather the HPTs in the component  
+! * The hard points are set within the CS to be respected by the meshing. In these points, later, the fibres are created using LINK180. 
+! ** HPTs locations is read from external 'fibre_location_sweep.txt' file. The fibre locations data have folowing format: X-coordinate (space, tab or comma) Y-coordinate (Thus the HPTs should be located in XY plane and must lie within the CS defined above). Then, each row corresponds to one HPT
+! 3) Define a sweep line(s)/curves
+! 4) Drag HPTs along the sweep path from 3) to generate lines for fibre elements
+! 5) Set mesh density for fibres
+! 6) Mesh the fibres by LINK180 elements
+! 7) Set mesh density for CS and mesh the CS by PLANE182 (QUAD4) elements
+! 8) Sweep the CS elements along the sweep path to create solid part of the component (SOLID185)
+! 9) Couple coincident nodes (connection of fibres to bulk material)
+! 10) The model is ready for further adjustments or one can proceed to apply boundary conditions etc.
+
+! For further information about model orientation etc., see figures attached in the repository
+!----------------------------------------------------------------------------------------------------------------------
+
+
+/PREP7
+!-INITIATION---------------------------------------------------------------------------------------------------------
+MAT_NO=1									! MATERIAL MODELS
+POLYMER=MAT_NO									
+
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+MPDATA,EX,POLYMER,,1400 					! YOUNG'S MODULUS [MPa]
+MPDATA,PRXY,POLYMER,,0.45					! POISSON'S RATIO [-]
+
+ONYX
+MAT_NO=2
+FIBRE=MAT_NO								! MATERIAL MODEL NUMBER
+
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+MPDATA,EX,FIBRE,,60000 						! YOUNG'S MODULUS [MPa]
+MPDATA,PRXY,FIBRE,,0.3						! POISSON'S RATIO [-]
+
+!----------------------------------------------------------------------------------------------------------------------
+L=96										! SUPPORTS SPAN, [mm]
+B=13										! SPECIMEN WIDTH, [mm]
+D=3											! SPECIMEN THICKNESS, [mm]
+
+FIBRE_AREA=0.05								! FIBRE CROSS-SECTIONAL AREA, [mm^2] 
+CS_EL_SIZE=0.25								! CROSS-SECTION ELEMENT SIZE, [mm](DETERMINE BASED ON DISTANCES AMONG FIBRES WITHIN THE CROSS-SECTION, MESHING ISSUES ARE POSSIBLY SOLVABLE BY SMALLER ELEMENT SIZING)
+FIBRE_LONG_DIV=30							! NUMBER OF FIBRE LONGITUDINAL DIVISIONS
+
+!----------------------------------------------------------------------------------------------------------------------
+ET,1,LINK180	   							! LINK (TRUSS) ELEMENT SELECTION
+ET,2,PLANE182   							! PLANAR ELEMENT SELECTION
+ET,3,SOLID185   							! SOLID ELEMENT SELECTION
+
+! 1----------------------------------------------------------------------------------------------------------------------	
+BLC4,,,B,D,									! CROSS SECTION
+
+! 2----------------------------------------------------------------------------------------------------------------------
+! CREATE HARD POINTS FOR FIBRES ON C-S AREA BASED ON IMPORTED COORDINATES
+
+/INQUIRE,NO_FIBRES,LINES,'FIBRE_LOCATION_SWEEP.TXT' 								! READ NO. OF LINES = NO. OF FIBRES
+*DIM,FIBRE_LOCATION_TABLE,TABLE,NO_FIBRES,1,,,, 									! PREDEFINE A TABLE
+*TREAD,FIBRE_LOCATION_TABLE,'FIBRE_LOCATION_SWEEP.TXT'								! READ DATA INTO THE PREDEF. TABLE
+
+*DIM,FIBRE_LOCATION,ARRAY,NO_FIBRES,2												! CREATE A BLANK ARRAY
+*DO,I,1,2 																			! COPY COLUMN BY COLUMN INTO THE ARRAY
+*VFUN,FIBRE_LOCATION(1,I),COPY,FIBRE_LOCATION_TABLE(1,I-1)
+*ENDDO
+
+FIBRE_LOCATION_TABLE= 																! DELETE THE INITIAL TABLE
+
+*DO,J,1,NO_FIBRES
+HPTCREATE,AREA,1,,COORD,FIBRE_LOCATION(J,1),FIBRE_LOCATION(J,2),
+*ENDDO
+
+
+KSEL,ALL																			! COMPONENT FOR FIBRE HPTs
+KSEL,U,LOC,X,0
+KSEL,U,LOC,X,B
+KSEL,U,LOC,Y,0
+KSEL,U,LOC,Y,D
+CM,FIBRE_KP,KP
+ALLSEL,ALL
+
+! 3----------------------------------------------------------------------------------------------------------------------
+K,,B+10,, 							 		! SWEEP LINE
+K,,B+10,,L/2
+
+*GET,KPMAX,KP,0,NUM,MAXD,,
+
+LSTR,KPMAX-1,KPMAX									
+ALLSEL,ALL
+! 4----------------------------------------------------------------------------------------------------------------------	
+*GET,LINEMAX,LINE,0,NUM,MAXD,,				! DRAG HPTs TO CREATE FIBRE LINES
+CMSEL,S,FIBRE_KP							
+
+LDRAG,ALL,,,,,,LINEMAX,,,,,
+ALLSEL,ALL
+
+LSEL,ALL									! CREATE A COMPONENT OF FIBRE LINES
+LSEL,U,LOC,X,B+10
+LSEL,U,LOC,Z,0
+CM,FIBRE_LINE,LINE		
+ALLSEL,ALL
+! 5----------------------------------------------------------------------------------------------------------------------
+CMSEL,S,FIBRE_LINE							! SET EQUAL MESH DENSITY FOR FIBRES AND BULK IN SWEEP DIRECTION (NECCESSARY TO ENSURE CORRECT CONNECTION OF FIBRES TO BULK MATERIAL)
+LSEL,A,LOC,X,B+10
+
+LESIZE,ALL,,,FIBRE_LONG_DIV,,,,,0						
+
+! 6----------------------------------------------------------------------------------------------------------------------
+SECTYPE,1,LINK,,FIBRE  						! SET A SECTION FOR FIBRES
+SECDATA,FIBRE_AREA,	
+SECCONTROL,0,0 
+
+CMSEL,S,FIBRE_LINE							! SELECT FIBRE LINES
+
+TYPE,1   									! SELECT ELEMENT TYPE FOR FIBRE
+MAT,FIBRE    								! SELECT MATERIAL FOR FIBRE     
+SECNUM,1    								! SELECT SECTION NUMBER FOR FIBRE
+
+LMESH,ALL									! MESH FIBRES LINES BY TRUSS ELEMS
+ALLSEL,ALL
+
+! 7----------------------------------------------------------------------------------------------------------------------
+AESIZE,1,CS_EL_SIZE, 
+
+TYPE,2   									! SELECT ELEMENT TYPE 
+MAT,POLYMER 								! SELECT MATERIAL    
+SECNUM,,    								
+MSHAPE,0,2D 								! QUADS, 2D
+MSHKEY,										! SET FREE MESHING (BECAUSE OF HPTs CANNOT USE MAPPED MESH)
+AMESH,ALL									! MESH THE AREA
+
+! 8----------------------------------------------------------------------------------------------------------------------
+ASEL,S,,,1
+VDRAG,ALL,,,,,,LINEMAX,,,,,					! DRAG BULK ELEMS
+ALLSEL,ALL
+
+ASEL,S,LOC,Z,0,,, 							! DELETE ALL 2D ELEMENTS
+ACLEAR,ALL
+ALLSEL,ALL
+
+! 9----------------------------------------------------------------------------------------------------------------------
+CPINTF,ALL,0.0001, 							! COUPLE COINCIDENT NODES
+
+ALLSEL,ALL
+
+/ESHAPE,1
+EPLOT
+FINISH
+
