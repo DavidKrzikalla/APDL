@@ -1,0 +1,39 @@
+! DEFINITION OF USER-DEFINED CROSS-SECTION IN APDL  
+! 1) SELECT BEAM ELEMENT TYPE
+! 2) SELECT MESH200 ELEMENT TYPE WITH KEYOPT(1)=7> NON SOLUTION QUAD4 ELEMENTS 
+! 3) MODEL THE AREA OF THE CROSS-SECTION
+! 4) MESH THE AREA USING MESH200 ELEMENTS
+! 5) WRITE THE SECTION INTO A .SECT FILE
+! 6) READ THE CREATED SECTION 
+! 7) PLOT THE SECTION TO CHECK PROPERTIES
+
+
+! 1---------------------------------------------------------------------------------
+ET,1,BEAM188 						
+
+! 2---------------------------------------------------------------------------------
+ET,2,200									
+KEYOPT,2,1,7
+
+! 3-MODELLING ELIPSE IN THIS CASE---------------------------------------------------
+CYL4,,,1
+ARSCALE,1,,,0.125/2,1.14/2  
+ADELE,1
+  
+! 4---------------------------------------------------------------------------------
+LSEL,S,,,5,8,,
+LESIZE,ALL,,, 10,,,,,
+TYPE,2
+AMESH,2
+
+! 5---------------------------------------------------------------------------------
+SECWRITE,MY_SECTION,,,2
+
+ ! 6---------------------------------------------------------------------------------
+SECTYPE,1,BEAM,MESH,
+SECOFFSET,CENT,,,   
+SECREAD,'MY_SECTION','SECT',' ',MESH  
+
+! 7---------------------------------------------------------------------------------
+SECPLOT,1,0 
+
