@@ -1,0 +1,198 @@
+!! This macro serves for calculation of reaction forces (in form of weight) at all wheels and sums the forces up for axles, sides and whole vehicle. 
+! Author: David Krzikalla
+
+! NOTE: do NOT indent the code and space-out operators - APDL does not understand the code then
+! This version is applicable for BEAM axles when using DISPLACEMENT boundary condition ONLY
+
+
+! Required Steps to Prepare in Mechanical:
+! 1) Create Nodal Named Selection of each end node of the axle (select nodes where wheels are located / where boundary conditions are set) named: L1 / P1 etc. where L/P stands for left (L) or right (P) wheel and the number stands for a number of axle counting from the front of the vehicle
+! 2) Insert this script into Command object into Solution 
+! 3) Set user variables of the script accordingly
+! 4) Solve the analysis
+
+! *** The script needs to be inserted BEFORE solving the analysis ***
+! *** For the script to function, the Nodal Forces (in Analysis Settings) need to be enabled ***
+! ########################################################################################################################################################################
+
+
+!! User variables:
+time_step = 1 ! set the time point (load step) used for reactions calculation
+axle_NO = 3 ! define number of axles
+
+file_name = 'Model_mass_properties' ! set the output file name
+
+
+! ################## START OF MAIN CODE ##################
+/POST1  ! step into post-processor  
+SET, time_step, last, , , , , , 
+
+!!! LEFT SIDE CALCULATION ##################
+
+
+*DO,JJ,1,axle_NO						! LOOP OVER ALL LEFT VEHICLE WHEELS 
+CMSEL,S,L%JJ%
+*GET,LEVA_%JJ%_ID,NODE,0,NUM,MAX			! GET MAX NODE NO. OF THE SELECTION (ONLY ONE NODE IN THE NAMED SELECTION)
+*GET,LEVA_%JJ%_FORCE,NODE,LEVA_%JJ%_ID,RF,FY			! GET REACTION FORCE OF THE NODE
+*GET, LEVA_%JJ%_x_LOC, NODE,LEVA_%JJ%_ID , LOC,X      !! x-location of the PILOT node
+*GET, LEVA_%JJ%_y_LOC, NODE,LEVA_%JJ%_ID , LOC,Y      !! y
+*GET, LEVA_%JJ%_z_LOC, NODE,LEVA_%JJ%_ID , LOC,Z      !! z 
+ALLSEL,ALL
+*ENDDO
+
+LEVA=0
+*DO,JJ,1,axle_NO
+LEVA=LEVA+LEVA_%JJ%_FORCE
+*ENDDO
+
+LEVA_KG=ABS(LEVA/9.81)				! RECALCULATE REACTION FORCE TO KG
+
+*DEL,JJ								! delete the iterator (just in order to clean the db)
+ALLSEL,ALL
+
+
+!!! RIGHT SIDE CALCULATION ##################
+
+*DO,JJ,1,axle_NO						! LOOP OVER ALL LEFT VEHICLE WHEELS 
+CMSEL,S,P%JJ%
+*GET,PRAVA_%JJ%_ID,NODE,0,NUM,MAX			! GET MAX NODE NO. OF THE SELECTION (ONLY ONE NODE IN THE NAMED SELECTION)
+*GET,PRAVA_%JJ%_FORCE,NODE,PRAVA_%JJ%_ID,RF,FY			! GET REACTION FORCE OF THE NODE
+*GET, PRAVA_%JJ%_x_LOC, NODE,PRAVA_%JJ%_ID , LOC,X      !! x-location of the PILOT node
+*GET, PRAVA_%JJ%_y_LOC, NODE,PRAVA_%JJ%_ID , LOC,Y      !! y
+*GET, PRAVA_%JJ%_z_LOC, NODE,PRAVA_%JJ%_ID , LOC,Z      !! z 
+ALLSEL,ALL
+*ENDDO
+
+PRAVA=0
+*DO,JJ,1,axle_NO
+PRAVA=PRAVA+PRAVA_%JJ%_FORCE
+*ENDDO
+
+PRAVA_KG=ABS(PRAVA/9.81)				! RECALCULATE REACTION FORCE TO KG
+
+*DEL,JJ								! delete the iterator (just in order to clean the db)
+ALLSEL,ALL
+
+
+!!! INDIVIDUAL AXLES CALCULATION ##################
+
+*DO,i,1,axle_NO,1					! LOOP OVER AXLES
+AXLE%i%_SVISLE=LEVA_%i%_FORCE+PRAVA_%i%_FORCE
+AXLE%i%_KG = ABS(AXLE%i%_SVISLE/9.81)
+*ENDDO
+
+*DEL,JJ	
+*DEL,i	
+ALLSEL,ALL
+
+
+! Center of gravity of the model based on mass matrix
+*GET, MODEL_CoG_X, ELEM, 0, MC, X, , 
+*GET, MODEL_CoG_Y, ELEM, 0, MC, Y, ,  
+*GET, MODEL_CoG_Z, ELEM, 0, MC, Z, , 
+
+
+! Mass of the model based on mass matrix
+*GET, MODEL_MASS_TOTAL, ELEM, 0, MTOT, X, ,  
+MODEL_MASS_TOTAL_KG = MODEL_MASS_TOTAL*1000
+ 
+! Difference of masses from reactions and mass matrix
+REACTION_MASS_TOTAL = LEVA_KG + PRAVA_KG
+MASS_DIFF = ((REACTION_MASS_TOTAL - MODEL_MASS_TOTAL_KG) / REACTION_MASS_TOTAL)*100 ! , POSITIVE DIFFERENCE = REACTION MASS > MODEL MASS AND VICE VERSA
+
+
+
+!!! WRITE OUTPUT INTO A FILE ##################
+*cfopen,file_name,txt             !! create ('open') a file
+
+*VWRITE
+(1X, '********* MODEL MASS PROPERTIES *********')
+
+*VWRITE
+(/,/,'##### MODEL CENTER OF GRAVITY [mm] #####')
+
+*VWRITE, MODEL_CoG_X 
+(5X, 'X = ', F12.1)                         
+
+*VWRITE, MODEL_CoG_Y
+(5X, 'Y = ', F12.1)  
+ 
+*VWRITE, MODEL_CoG_Z 
+(5X, 'Z = ', F12.1)  
+
+*VWRITE
+(/,'##### VEHICLE LEFT SIDE #####',/)
+ 
+*VWRITE
+(5X, 'AXLE NO., ', 'NODE ID, ',  'REACTION FORCE [N], ',  'X, ',  'Y, ',  'Z')
+  
+*DO,i,1,axle_NO,1               
+*VWRITE,i,LEVA_%i%_ID,LEVA_%i%_FORCE,LEVA_%i%_x_LOC,LEVA_%i%_y_LOC,LEVA_%i%_z_LOC      
+(F10.0,1X,F10.0,1x,F12.0,1x,F11.2,1x,F11.2,1x,F11.2)               
+*ENDDO
+
+*VWRITE
+(/,5X,'WEIGHT [KG]')
+*VWRITE, LEVA_KG
+(F12.0)
+
+
+*VWRITE
+(/,/,'##### VEHICLE RIGHT SIDE #####',/)
+
+*VWRITE
+(5X, 'AXLE NO., ', 'NODE ID, ',  'REACTION FORCE [N], ',  'X, ',  'Y, ',  'Z')
+
+*DO,i,1,axle_NO,1                
+*VWRITE,i,PRAVA_%i%_ID,PRAVA_%i%_FORCE,PRAVA_%i%_x_LOC,PRAVA_%i%_y_LOC,PRAVA_%i%_z_LOC      
+(F10.0,1X,F10.0,1x,F12.0,1x,F11.2,1x,F11.2,1x,F11.2)                                
+*ENDDO
+	
+*VWRITE
+(/,5X,'WEIGHT [KG]') 
+*VWRITE, PRAVA_KG
+(F12.0)
+
+
+*VWRITE
+(/,'##### VEHICLE AXLES #####',/)
+
+*VWRITE
+(5X,'AXLE, ', 'WEIGHT [KG]')
+
+*DO,i,1,axle_NO,1                 
+*VWRITE,i,AXLE%i%_KG 
+(F10.0,1x,F12.0)                         
+*ENDDO
+
+*VWRITE, 
+(/,/, '##### TOTAL VEHICLE WEIGHT [KG] #####') 
+
+*VWRITE, REACTION_MASS_TOTAL
+(5X,F12.0)
+
+
+
+ 
+*VWRITE
+(/,/,'------------------ MASS CHECK ------------------ ',/)
+
+*VWRITE, REACTION_MASS_TOTAL
+(1X, 'TOTAL WEIGHT (summed from reactions) [KG]', 1X,F12.0)        
+    
+*VWRITE, MODEL_MASS_TOTAL_KG
+(1X, 'TOTAL WEIGHT (from mass matrix) [KG]', 1X,F12.0) 
+
+*VWRITE, MASS_DIFF
+(1x, 'MASS DIFFERENCE [%]', 1X, F12.3) 
+
+
+*IF, MASS_DIFF, GT, 0.5, OR, MASS_DIFF, LT, -0.5,THEN		! IF LOOP DECIDIONG EITHER OK OR NOT OK. TRESHOLD 0.5 %
+*VWRITE
+(/,' >>> WRONG WEIGHT - CHECK THE MODEL <<<')  
+*ELSE  
+*VWRITE
+(/,' >>> CORRECT WEIGHT <<<')  
+*ENDIF
+
+*cfclose                          !! close the file
