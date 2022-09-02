@@ -1,0 +1,18 @@
+! APDL script to delete zero quality elements in Ansys Mechanical
+! Author: David Krzikalla
+! 1) Create a Named Selection (NS) using Worksheet and set filter to Element Quality less than 0.01
+! 2) Insert a command object into tree under analysis branch
+! 3) Insert the code below into the command object
+! 4) Enter NS name instead of 'NÁZEV NAMED SELECTION' in the code
+! 5) Solve the analysis, the script prior to solution automatiacaly deletes zero quality elements
+
+! Known issues:
+! I) If there are no bad elements in the created NS (no zero quality elements), the error message is issued and solve is not performed. 
+
+
+
+/PREP7
+CMSEL, S, NÁZEV NAMED SELECTION, ELEM
+EDELE, ALL
+ALLSEL, ALL
+/SOLU
